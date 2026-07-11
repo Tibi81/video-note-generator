@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.env
+output/
+input/*
+!input/.gitkeep
+*.json
+!tests/fixtures/*.json

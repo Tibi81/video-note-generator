@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "video-note-generator"
+version = "0.1.0"
+description = "Convert video workshop subtitles into Obsidian-compatible study notes"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.0",
+    "srt>=3.5",
+    "typer>=0.12",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+video-notes = "video_notes.main:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/video_notes"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,11 @@
+1
+00:00:01,000 --> 00:00:04,000
+Hellóka! Üdv mindenkinek.
+
+2
+00:00:04,000 --> 00:00:07,500
+Ma a komponensekről lesz szó.
+
+3
+00:00:07,500 --> 00:00:10,000
+Először nézzük meg az Auto Layoutot.

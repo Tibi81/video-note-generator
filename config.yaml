@@ -1,0 +1,13 @@
+project:
+  name: "Video Note Generator"
+  language: "hu"
+
+input:
+  video_extensions: [".mp4", ".webm", ".mkv", ".mov"]
+  subtitle_extensions: [".srt", ".vtt"]
+
+parser:
+  encoding: "utf-8"
+
+output:
+  directory: "output"
