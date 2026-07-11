@@ -5,6 +5,7 @@ import os
 import re
 from abc import ABC, abstractmethod
 from pathlib import Path
+from string import Template
 
 from dotenv import load_dotenv
 
@@ -178,6 +179,26 @@ def load_prompt(name: str, prompts_dir: Path | None = None) -> str:
     if not path.exists():
         raise FileNotFoundError(f"A prompt sablon nem található: {path}")
     return path.read_text(encoding="utf-8")
+
+
+def render_prompt(template: str, **values: str) -> str:
+    """Prompt sablon kitöltése — $placeholder szintaxis, biztonságos { } karakterekkel."""
+    return Template(template).substitute(**values)
+
+
+def prompt_context_from_settings(settings: dict) -> dict[str, str]:
+    project = settings.get("project", {})
+    return {
+        "domain_hints": project.get(
+            "domain_hints",
+            "a videó témájához illő konkrét szakkifejezések",
+        ),
+        "practice_context": project.get(
+            "practice_context",
+            "a workshop témájához illő gyakorlati környezet",
+        ),
+        "chapters_per_minutes": str(project.get("chapters_per_minutes", "3-4")),
+    }
 
 
 def create_ai_provider(config: AIConfig) -> AIProvider:

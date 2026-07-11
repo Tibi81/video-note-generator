@@ -4,7 +4,12 @@ import json
 import re
 from pathlib import Path
 
-from video_notes.ai import create_ai_provider, extract_json_array, load_prompt
+from video_notes.ai import (
+    create_ai_provider,
+    extract_json_array,
+    load_prompt,
+    render_prompt,
+)
 from video_notes.models import (
     AIConfig,
     Chapter,
@@ -14,43 +19,12 @@ from video_notes.models import (
     CleanBlock,
     CleanDocument,
     TextSegment,
+    TopicKeyword,
     format_srt_time,
     parse_srt_time,
 )
 
 SENTENCE_SPLIT = re.compile(r"(?<=[.!?…])\s+")
-
-TOPIC_KEYWORDS: list[tuple[str, str]] = [
-    ("auto layout", "Auto Layout"),
-    ("autolayout", "Auto Layout"),
-    ("variant", "Variants"),
-    ("design system", "Design System"),
-    ("dizájnrendszer", "Design System"),
-    ("responsive", "Responsive"),
-    ("typography", "Typography"),
-    ("tipográfia", "Tipográfia"),
-    ("hero", "Hero szakasz"),
-    ("kártya komponens", "Kártya komponens"),
-    ("gomb komponens", "Gomb komponens"),
-    ("házi feladat", "Házi feladat"),
-    ("instance", "Instances"),
-    ("property", "Properties"),
-    ("padding", "Padding és spacing"),
-    ("grid", "Grid"),
-    ("ikon", "Ikonok"),
-    ("komponens", "Komponensek"),
-    ("component", "Components"),
-    ("kártya", "Kártya komponens"),
-    ("gomb", "Gomb komponens"),
-    ("figma", "Figma"),
-    ("szakasz", "Szakaszok"),
-    ("bevezet", "Bevezetés"),
-    ("gap", "Gap beállítás"),
-]
-
-GENERIC_TITLE_KEYWORDS = frozenset(
-    {"komponens", "component", "figma", "szakasz", "bevezet"}
-)
 
 
 def load_clean_document(path: Path) -> CleanDocument:
@@ -156,16 +130,22 @@ def expand_blocks_to_segments(
     return segments
 
 
-def guess_title(text: str, fallback_index: int) -> str:
+def guess_title(
+    text: str,
+    fallback_index: int,
+    topic_keywords: list[TopicKeyword],
+) -> str:
     lowered = text.lower()
     generic_match: str | None = None
+    generic_keywords = {entry.keyword.lower() for entry in topic_keywords if entry.generic}
 
-    for keyword, title in TOPIC_KEYWORDS:
+    for entry in topic_keywords:
+        keyword = entry.keyword.lower()
         if keyword in lowered:
-            if keyword in GENERIC_TITLE_KEYWORDS:
-                generic_match = generic_match or title
+            if keyword in generic_keywords:
+                generic_match = generic_match or entry.title
                 continue
-            return title
+            return entry.title
 
     first_sentence = split_sentences(text)[0] if text else ""
     if generic_match and len(first_sentence) < 20:
@@ -198,6 +178,7 @@ def target_words_per_chapter(
 def build_chapter_from_segments(
     segments: list[TextSegment],
     index: int,
+    topic_keywords: list[TopicKeyword],
 ) -> Chapter:
     text = " ".join(segment.text for segment in segments)
     source_indices: list[int] = []
@@ -206,7 +187,7 @@ def build_chapter_from_segments(
 
     return Chapter(
         index=index,
-        title=guess_title(text, index),
+        title=guess_title(text, index, topic_keywords),
         start=segments[0].start,
         end=segments[-1].end,
         text=text,
@@ -256,7 +237,7 @@ def detect_chapters_heuristic(
             grouped.append(buffer)
 
     chapters = [
-        build_chapter_from_segments(group, index)
+        build_chapter_from_segments(group, index, config.topic_keywords)
         for index, group in enumerate(grouped, start=1)
     ]
 
@@ -316,7 +297,7 @@ def rebalance_chapters(
 
         left = Chapter(
             index=chapter.index,
-            title=guess_title(left_text, chapter.index),
+            title=guess_title(left_text, chapter.index, config.topic_keywords),
             start=chapter.start,
             end=split_at,
             text=left_text,
@@ -324,7 +305,7 @@ def rebalance_chapters(
         )
         right = Chapter(
             index=chapter.index + 1,
-            title=guess_title(right_text, chapter.index + 1),
+            title=guess_title(right_text, chapter.index + 1, config.topic_keywords),
             start=split_at,
             end=chapter.end,
             text=right_text,
@@ -386,6 +367,7 @@ def detect_chapters_ai(
     chapters_config: ChaptersConfig,
     ai_config: AIConfig,
     prompts_dir: Path | None = None,
+    prompt_context: dict[str, str] | None = None,
 ) -> ChapterDocument:
     segments = expand_blocks_to_segments(
         document.blocks,
@@ -396,6 +378,7 @@ def detect_chapters_ai(
 
     provider = create_ai_provider(ai_config)
     prompt_template = load_prompt("chapter", prompts_dir=prompts_dir)
+    context = prompt_context or {}
     chunks = chunk_segments_by_duration(
         segments,
         chunk_minutes=chapters_config.chunk_duration_minutes,
@@ -403,7 +386,11 @@ def detect_chapters_ai(
 
     detected: list[tuple[str, str]] = []
     for chunk in chunks:
-        prompt = prompt_template.format(transcript=format_transcript_chunk(chunk))
+        prompt = render_prompt(
+            prompt_template,
+            transcript=format_transcript_chunk(chunk),
+            **context,
+        )
         raw = provider.complete(
             system_prompt="You are a precise assistant that returns only valid JSON.",
             user_prompt=prompt,
@@ -468,6 +455,7 @@ def detect_chapters(
     config: ChaptersConfig,
     ai_config: AIConfig | None = None,
     prompts_dir: Path | None = None,
+    prompt_context: dict[str, str] | None = None,
 ) -> ChapterDocument:
     if config.method == "ai":
         if ai_config is None:
@@ -477,6 +465,7 @@ def detect_chapters(
             chapters_config=config,
             ai_config=ai_config,
             prompts_dir=prompts_dir,
+            prompt_context=prompt_context,
         )
     return detect_chapters_heuristic(document, config)
 

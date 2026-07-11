@@ -58,7 +58,7 @@ def test_run_pipeline_with_mock_ai(tmp_path: Path):
     from video_notes.models import ProcessedChapter, SummaryDocument, SummaryStats
     import video_notes.pipeline as pipeline_module
 
-    def fake_summarize(document, ai_config, prompts_dir=None, provider=None, on_progress=None):
+    def fake_summarize(document, ai_config, prompts_dir=None, provider=None, prompt_context=None, on_progress=None):
         chapters = [
             ProcessedChapter(
                 index=chapter.index,

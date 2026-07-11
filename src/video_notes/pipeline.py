@@ -83,6 +83,7 @@ def run_pipeline(
     markdown_config: MarkdownConfig | None = None,
     skip_summarize: bool = False,
     skip_shots: bool = False,
+    prompt_context: dict[str, str] | None = None,
     log: LogFn | None = None,
 ) -> dict[str, Path]:
     emit = log or print
@@ -109,6 +110,7 @@ def run_pipeline(
         cleaned,
         config=chapters_config or ChaptersConfig(),
         ai_config=ai_config if (chapters_config or ChaptersConfig()).method == "ai" else None,
+        prompt_context=prompt_context,
     )
     chapters_path = output_dir / "chapters.json"
     export_chapters_json(chapters_result, chapters_path)
@@ -129,6 +131,7 @@ def run_pipeline(
     summary_result = summarize_document(
         chapters_result,
         ai_config=ai_config,
+        prompt_context=prompt_context,
         on_progress=lambda index, total, chapter: emit(
             f"       [{index}/{total}] {chapter.title}"
         ),

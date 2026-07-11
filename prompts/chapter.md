@@ -5,7 +5,7 @@ Your task:
 2. For this chunk, return chapters that START within this text.
 3. Keep all important topics; do not over-merge unrelated sections.
 4. Use clear, concise Hungarian titles (2-6 words) suitable for study notes.
-5. Prefer concrete UI/design terms when visible in the text (e.g. Components, Variants, Auto Layout).
+5. Prefer concrete domain terms when visible in the text: $domain_hints
 
 Return ONLY valid JSON array, no markdown fences:
 [
@@ -16,8 +16,9 @@ Return ONLY valid JSON array, no markdown fences:
 Rules:
 - `start` must match an existing timestamp from the transcript.
 - Titles must be in Hungarian.
-- Aim for proportional coverage of this chunk (not too few, not too many).
+- Aim for roughly 1 chapter per $chapters_per_minutes minutes of content in this chunk.
+- Use ONLY information present in the transcript. Do not invent topics or timestamps.
 - Skip pure technical/chat interruptions unless they start a new topic.
 
 Transcript chunk:
-{transcript}
+$transcript

@@ -112,6 +112,39 @@ def test_extract_json_object():
     assert data["summary"] == "Teszt"
 
 
+def test_render_prompt_handles_braces_in_transcript():
+    from video_notes.ai import render_prompt
+
+    template = "Title: $title\nBody:\n$transcript"
+    result = render_prompt(
+        template,
+        title="JSON példa",
+        transcript='const obj = {"key": "value"}; // CSS: .class { color: red }',
+    )
+    assert '{"key": "value"}' in result
+    assert ".class { color: red }" in result
+
+
+def test_render_prompt_substitutes_domain_hints():
+    from video_notes.ai import prompt_context_from_settings, render_prompt
+
+    settings = {
+        "project": {
+            "domain_hints": "Python, pytest",
+            "practice_context": "backend workshop",
+            "chapters_per_minutes": "5",
+        }
+    }
+    context = prompt_context_from_settings(settings)
+    result = render_prompt(
+        "Hints: $domain_hints\nContext: $practice_context\nRate: $chapters_per_minutes",
+        **context,
+    )
+    assert "Python, pytest" in result
+    assert "backend workshop" in result
+    assert "5" in result
+
+
 def test_apply_provider_defaults_gemini():
     config = AIConfig(provider="mistral")
     result = apply_provider_defaults(config, provider="gemini")

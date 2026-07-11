@@ -1,6 +1,9 @@
 project:
   name: "Video Note Generator"
   language: "hu"
+  domain_hints: "Figma, webdesign, UI komponensek (Components, Variants, Auto Layout)"
+  practice_context: "Figma / webdesign workshop"
+  chapters_per_minutes: "3-4"
 
 input:
   video_extensions: [".mp4", ".webm", ".mkv", ".mov"]
@@ -23,6 +26,62 @@ chapters:
   max_words_per_segment: 250
   gap_threshold_seconds: 20
   method: heuristic
+  topic_keywords:
+    - keyword: "auto layout"
+      title: "Auto Layout"
+    - keyword: "autolayout"
+      title: "Auto Layout"
+    - keyword: "variant"
+      title: "Variants"
+    - keyword: "design system"
+      title: "Design System"
+    - keyword: "dizájnrendszer"
+      title: "Design System"
+    - keyword: "responsive"
+      title: "Responsive"
+    - keyword: "typography"
+      title: "Typography"
+    - keyword: "tipográfia"
+      title: "Tipográfia"
+    - keyword: "hero"
+      title: "Hero szakasz"
+    - keyword: "kártya komponens"
+      title: "Kártya komponens"
+    - keyword: "gomb komponens"
+      title: "Gomb komponens"
+    - keyword: "házi feladat"
+      title: "Házi feladat"
+    - keyword: "instance"
+      title: "Instances"
+    - keyword: "property"
+      title: "Properties"
+    - keyword: "padding"
+      title: "Padding és spacing"
+    - keyword: "grid"
+      title: "Grid"
+    - keyword: "ikon"
+      title: "Ikonok"
+    - keyword: "komponens"
+      title: "Komponensek"
+      generic: true
+    - keyword: "component"
+      title: "Components"
+      generic: true
+    - keyword: "kártya"
+      title: "Kártya komponens"
+    - keyword: "gomb"
+      title: "Gomb komponens"
+    - keyword: "figma"
+      title: "Figma"
+      generic: true
+    - keyword: "szakasz"
+      title: "Szakaszok"
+      generic: true
+    - keyword: "bevezet"
+      title: "Bevezetés"
+      generic: true
+    - keyword: "gap"
+      title: "Gap beállítás"
 
 ai:
   provider: mistral

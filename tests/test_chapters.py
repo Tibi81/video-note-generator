@@ -7,7 +7,7 @@ from video_notes.chapters import (
     split_block_into_segments,
 )
 from video_notes.cleaner import clean_document
-from video_notes.models import ChaptersConfig, CleanBlock
+from video_notes.models import ChaptersConfig, CleanBlock, TopicKeyword, default_topic_keywords
 from video_notes.parser import parse_srt_file
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -27,8 +27,40 @@ def test_split_long_block_into_segments():
 
 
 def test_guess_title_uses_keyword():
-    title = guess_title("Ma az Auto Layout beállításait nézzük részletesen.", 1)
+    keywords = default_topic_keywords()
+    title = guess_title("Ma az Auto Layout beállításait nézzük részletesen.", 1, keywords)
     assert title == "Auto Layout"
+
+
+def test_guess_title_uses_custom_keywords():
+    keywords = [
+        TopicKeyword(keyword="pytest", title="Pytest tesztek"),
+        TopicKeyword(keyword="virtualenv", title="Virtualenv"),
+    ]
+    title = guess_title("Ma a pytest fixture-öket nézzük át.", 1, keywords)
+    assert title == "Pytest tesztek"
+
+
+def test_chapters_config_loads_topic_keywords_from_yaml(tmp_path):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        """
+chapters:
+  topic_keywords:
+    - keyword: "docker"
+      title: "Docker konténerek"
+    - keyword: "kubernetes"
+      title: "Kubernetes"
+""",
+        encoding="utf-8",
+    )
+    import yaml
+
+    settings = yaml.safe_load(config_file.read_text(encoding="utf-8"))
+    config = ChaptersConfig.model_validate(settings.get("chapters", {}))
+
+    assert len(config.topic_keywords) == 2
+    assert config.topic_keywords[0].title == "Docker konténerek"
 
 
 def test_detect_chapters_heuristic_count_range():

@@ -2,19 +2,20 @@
 
 Videós workshopok feldolgozása Obsidian-kompatibilis tanulási jegyzetekké.
 
-## Fázis 1 — Parser (MVP)
+## Pipeline
 
-SRT felirat beolvasása, strukturált JSON export, statisztika.
+```
+SRT → Parser → Cleaner → Chapters → Summarize (AI) → Shots (ffmpeg) → Build (Markdown)
+```
 
-## Fázis 2 — Cleaner
-
-Zaj eltávolítása (kitöltőszavak, chat, technikai részek), duplikátumok szűrése,
-tördelt mondatok összevonása időbélyegek megőrzésével.
-
-## Fázis 3 — Chapter Detector
-
-Tisztított szöveg logikus fejezetekre bontása időbélyegekkel és címekkel.
-Alapértelmezés: heurisztikus módszer; opcionálisan AI (`--method ai`).
+| Lépés | Parancs | API |
+|-------|---------|-----|
+| Parser | `video-notes parse` | nem |
+| Cleaner | `video-notes clean` | nem |
+| Chapters | `video-notes chapters` | opcionális (`--method ai`) |
+| Summarize | `video-notes summarize` | igen |
+| Shots | `video-notes shots` | nem (ffmpeg) |
+| Build | `video-notes build` | nem |
 
 ### Telepítés
 
@@ -32,9 +33,11 @@ Másold át a `.env.example` fájlt `.env` néven, és add meg a kulcsot:
 
 ```env
 MISTRAL_API_KEY=your-key-here
+# GOOGLE_API_KEY=...   # Gemini-hez
+# OPENAI_API_KEY=...   # OpenAI-hoz
 ```
 
-Alapértelmezett provider a `config.yaml`-ban: **Mistral** (ingyenes tier).
+Alapértelmezett provider a `config.yaml`-ban: **Mistral**.
 
 ```yaml
 ai:
@@ -45,14 +48,8 @@ ai:
 Provider választás CLI-ből (`mistral`, `gemini`, `openai`):
 
 ```bash
-# Mistral (alapértelmezett)
-video-notes chapters output/cleaned.json --method ai --provider mistral
 video-notes summarize output/chapters.json --provider mistral
-
-# Gemini (ingyenes kvóta)
 video-notes summarize output/chapters.json --provider gemini
-
-# OpenAI
 video-notes summarize output/chapters.json --provider openai
 ```
 
@@ -82,12 +79,84 @@ video-notes clean input/webinar.srt --output output/cleaned.json --stats
 # 3. Chapters (heurisztikus, API nélkül)
 video-notes chapters output/cleaned.json --output output/chapters.json --stats
 
-# 4. AI összefoglaló (MISTRAL_API_KEY vagy GOOGLE_API_KEY a .env-ben)
+# 4. AI fejezetek (opcionális, API-val)
+video-notes chapters output/cleaned.json --method ai --provider mistral --stats
+
+# 5. AI összefoglaló
 video-notes summarize output/chapters.json --provider mistral --stats
 
-# 5. Screenshotok (ffmpeg)
+# 6. Screenshotok (ffmpeg)
 video-notes shots output/summary.json
 
-# 6. Obsidian jegyzet
+# 7. Obsidian jegyzet
 video-notes build output/summary.json --output output/notes.md
 ```
+
+## Workshop típus testreszabása
+
+Az alapértelmezett konfiguráció Figma / webdesign workshopokra van hangolva.
+Más témájú videókhoz a `config.yaml`-ban két helyen érdemes módosítani:
+
+### AI promptok (`project:`)
+
+A fejezetfelismerés és az összefoglaló promptok ezeket a mezőket használják:
+
+| Mező | Hatás |
+|------|-------|
+| `domain_hints` | Preferált szakkifejezések az AI-nak (címek, kulcsszavak) |
+| `practice_context` | A `practice_task` gyakorlati feladat kontextusa |
+| `chapters_per_minutes` | Célzott fejezetarány AI módban (pl. `"3-4"` = kb. 1 fejezet / 3–4 perc) |
+
+```yaml
+project:
+  domain_hints: "Figma, webdesign, UI komponensek (Components, Variants, Auto Layout)"
+  practice_context: "Figma / webdesign workshop"
+  chapters_per_minutes: "3-4"
+```
+
+### Heurisztikus fejezetcímek (`chapters.topic_keywords`)
+
+Ha `chapters.method: heuristic` (alapértelmezett), a fejezetcímeket kulcsszó-alapú
+egyeztetés határozza meg — API hívás nélkül.
+
+| Mező | Hatás |
+|------|-------|
+| `keyword` | Keresett szöveg a transzkriptben |
+| `title` | Generált fejezetcím, ha a kulcsszó megtalálható |
+| `generic` | Túl általános kulcsszó: csak rövid mondatnál lesz cím (pl. „bevezet”, „figma”) |
+
+```yaml
+chapters:
+  method: heuristic
+  topic_keywords:
+    - keyword: "auto layout"
+      title: "Auto Layout"
+    - keyword: "figma"
+      title: "Figma"
+      generic: true
+```
+
+### Példa: Python workshop
+
+```yaml
+project:
+  domain_hints: "Python, pytest, virtualenv, type hints, pip"
+  practice_context: "Python backend workshop"
+  chapters_per_minutes: "4-5"
+
+chapters:
+  method: heuristic
+  topic_keywords:
+    - keyword: "pytest"
+      title: "Pytest tesztek"
+    - keyword: "virtualenv"
+      title: "Virtualenv"
+    - keyword: "type hint"
+      title: "Type hints"
+    - keyword: "bevezet"
+      title: "Bevezetés"
+      generic: true
+```
+
+AI módhoz (`chapters.method: ai` vagy `--method ai`) elég a `project:` szekció
+átírása — a `topic_keywords` csak a heurisztikus detektálást érinti.

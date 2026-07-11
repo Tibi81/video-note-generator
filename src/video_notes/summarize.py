@@ -5,7 +5,13 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 
-from video_notes.ai import AIProvider, create_ai_provider, extract_json_object, load_prompt
+from video_notes.ai import (
+    AIProvider,
+    create_ai_provider,
+    extract_json_object,
+    load_prompt,
+    render_prompt,
+)
 from video_notes.models import (
     AIConfig,
     Chapter,
@@ -100,17 +106,21 @@ def summarize_chapter(
     chapter: Chapter,
     provider: AIProvider,
     prompt_template: str,
+    prompt_context: dict[str, str],
 ) -> ProcessedChapter:
-    prompt = prompt_template.format(
+    prompt = render_prompt(
+        prompt_template,
         title=chapter.title,
         start=chapter.start,
         end=chapter.end,
         transcript=chapter.text,
+        **prompt_context,
     )
+    domain = prompt_context.get("practice_context", "workshop")
     raw = provider.complete(
         system_prompt=(
             "You are a precise assistant that returns only valid JSON "
-            "for Hungarian webdesign study notes."
+            f"for Hungarian study notes. Context: {domain}."
         ),
         user_prompt=prompt,
     )
@@ -123,17 +133,19 @@ def summarize_document(
     ai_config: AIConfig,
     prompts_dir: Path | None = None,
     provider: AIProvider | None = None,
+    prompt_context: dict[str, str] | None = None,
     on_progress: Callable[[int, int, Chapter], None] | None = None,
 ) -> SummaryDocument:
     ai = provider or create_ai_provider(ai_config)
     prompt_template = load_prompt("summarize", prompts_dir=prompts_dir)
+    context = prompt_context or {}
 
     processed: list[ProcessedChapter] = []
     total = len(document.chapters)
     for chapter in document.chapters:
         if on_progress:
             on_progress(chapter.index, total, chapter)
-        processed.append(summarize_chapter(chapter, ai, prompt_template))
+        processed.append(summarize_chapter(chapter, ai, prompt_template, context))
 
     screenshot_count = sum(1 for chapter in processed if chapter.screenshot is not None)
     word_count = sum(len(chapter.summary.split()) for chapter in processed)

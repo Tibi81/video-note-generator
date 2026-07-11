@@ -5,7 +5,7 @@ from pathlib import Path
 import typer
 import yaml
 
-from video_notes.ai import SUPPORTED_PROVIDERS, apply_provider_defaults
+from video_notes.ai import SUPPORTED_PROVIDERS, apply_provider_defaults, prompt_context_from_settings
 from video_notes.chapters import detect_chapters, export_chapters_json, load_clean_document
 from video_notes.cleaner import clean_document, export_clean_json, load_subtitle_document
 from video_notes.models import (
@@ -331,6 +331,7 @@ def chapters(
             cleaned,
             config=chapters_config,
             ai_config=ai_config,
+            prompt_context=prompt_context_from_settings(settings),
         )
     except RuntimeError as exc:
         typer.echo(f"Hiba: {exc}", err=True)
@@ -401,6 +402,7 @@ def summarize(
         result = summarize_document(
             chapters_doc,
             ai_config=ai_config,
+            prompt_context=prompt_context_from_settings(settings),
             on_progress=lambda index, total, chapter: typer.echo(
                 f"  [{index}/{total}] {chapter.title}"
             ),
@@ -623,6 +625,7 @@ def process(
             markdown_config=markdown_config_from_settings(settings),
             skip_summarize=skip_summarize,
             skip_shots=skip_shots,
+            prompt_context=prompt_context_from_settings(settings),
             log=typer.echo,
         )
     except RuntimeError as exc:

@@ -220,6 +220,44 @@ class ChapterDocument(BaseModel):
     stats: ChapterStats | None = None
 
 
+class TopicKeyword(BaseModel):
+    """Kulcsszó → fejezetcím mapping a heurisztikus detektáláshoz."""
+
+    keyword: str
+    title: str
+    generic: bool = False
+
+
+def default_topic_keywords() -> list[TopicKeyword]:
+    return [
+        TopicKeyword(keyword="auto layout", title="Auto Layout"),
+        TopicKeyword(keyword="autolayout", title="Auto Layout"),
+        TopicKeyword(keyword="variant", title="Variants"),
+        TopicKeyword(keyword="design system", title="Design System"),
+        TopicKeyword(keyword="dizájnrendszer", title="Design System"),
+        TopicKeyword(keyword="responsive", title="Responsive"),
+        TopicKeyword(keyword="typography", title="Typography"),
+        TopicKeyword(keyword="tipográfia", title="Tipográfia"),
+        TopicKeyword(keyword="hero", title="Hero szakasz"),
+        TopicKeyword(keyword="kártya komponens", title="Kártya komponens"),
+        TopicKeyword(keyword="gomb komponens", title="Gomb komponens"),
+        TopicKeyword(keyword="házi feladat", title="Házi feladat"),
+        TopicKeyword(keyword="instance", title="Instances"),
+        TopicKeyword(keyword="property", title="Properties"),
+        TopicKeyword(keyword="padding", title="Padding és spacing"),
+        TopicKeyword(keyword="grid", title="Grid"),
+        TopicKeyword(keyword="ikon", title="Ikonok"),
+        TopicKeyword(keyword="komponens", title="Komponensek", generic=True),
+        TopicKeyword(keyword="component", title="Components", generic=True),
+        TopicKeyword(keyword="kártya", title="Kártya komponens"),
+        TopicKeyword(keyword="gomb", title="Gomb komponens"),
+        TopicKeyword(keyword="figma", title="Figma", generic=True),
+        TopicKeyword(keyword="szakasz", title="Szakaszok", generic=True),
+        TopicKeyword(keyword="bevezet", title="Bevezetés", generic=True),
+        TopicKeyword(keyword="gap", title="Gap beállítás"),
+    ]
+
+
 class ChaptersConfig(BaseModel):
     """Fejezet detektálás beállításai."""
 
@@ -229,6 +267,7 @@ class ChaptersConfig(BaseModel):
     max_words_per_segment: int = 250
     gap_threshold_seconds: int = 20
     method: str = "heuristic"
+    topic_keywords: list[TopicKeyword] = Field(default_factory=default_topic_keywords)
 
 
 class AIConfig(BaseModel):
