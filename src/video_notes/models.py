@@ -280,6 +280,43 @@ class SummaryDocument(BaseModel):
     stats: SummaryStats | None = None
 
 
+class ScreenshotsConfig(BaseModel):
+    """Screenshot kivágás beállításai."""
+
+    format: str = "png"
+    width: int = 1280
+    dedup_threshold_seconds: int = 30
+
+
+class MarkdownConfig(BaseModel):
+    """Markdown generálás beállításai."""
+
+    obsidian_wikilinks: bool = True
+    include_practice: bool = True
+    include_keywords: bool = True
+    title: str | None = None
+
+
+class ScreenshotRecord(BaseModel):
+    """Egy kivágott vagy tervezett screenshot metaadata."""
+
+    index: int
+    chapter_index: int
+    chapter_title: str
+    timestamp: str
+    filename: str
+    reason: str
+    extracted: bool = False
+
+
+class ScreenshotsManifest(BaseModel):
+    """Screenshot kivágások listája."""
+
+    video_file: str
+    images_dir: str
+    screenshots: list[ScreenshotRecord] = Field(default_factory=list)
+
+
 def resolve_source_name(path: Path) -> str:
     """Relatív vagy abszolút fájlnév a dokumentum metaadatához."""
     try:

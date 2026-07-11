@@ -8,8 +8,22 @@ import yaml
 from video_notes.ai import SUPPORTED_PROVIDERS, apply_provider_defaults
 from video_notes.chapters import detect_chapters, export_chapters_json, load_clean_document
 from video_notes.cleaner import clean_document, export_clean_json, load_subtitle_document
-from video_notes.models import AIConfig, ChaptersConfig, CleanerConfig
+from video_notes.models import (
+    AIConfig,
+    ChaptersConfig,
+    CleanerConfig,
+    MarkdownConfig,
+    ScreenshotsConfig,
+)
+from video_notes.markdown import build_markdown, export_markdown
 from video_notes.parser import export_json, parse_srt_file
+from video_notes.screenshots import (
+    export_manifest,
+    extract_screenshots,
+    find_video_file,
+    load_manifest,
+    load_summary_document,
+)
 from video_notes.summarize import export_summary_json, load_chapter_document, summarize_document
 
 app = typer.Typer(
@@ -46,6 +60,14 @@ def resolve_ai_config(
 ) -> AIConfig:
     config = ai_config_from_settings(settings)
     return apply_provider_defaults(config, provider=provider, model=model)
+
+
+def screenshots_config_from_settings(settings: dict) -> ScreenshotsConfig:
+    return ScreenshotsConfig.model_validate(settings.get("screenshots", {}))
+
+
+def markdown_config_from_settings(settings: dict) -> MarkdownConfig:
+    return MarkdownConfig.model_validate(settings.get("markdown", {}))
 
 
 def format_duration(seconds: float) -> str:
@@ -394,6 +416,120 @@ def summarize(
 
     if stats:
         print_summary_stats(result)
+
+
+@app.command()
+def shots(
+    source: Path = typer.Argument(
+        ...,
+        help="summary.json fájl",
+        exists=True,
+        readable=True,
+    ),
+    video: Path | None = typer.Option(
+        None,
+        "--video",
+        "-v",
+        help="Videófájl elérési útja (auto: input/ mappa)",
+    ),
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="screenshots.json manifest",
+    ),
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="config.yaml elérési útja",
+    ),
+) -> None:
+    """Screenshotok kivágása a videóból ffmpeg-gel."""
+    settings = load_config(config)
+    output_dir = default_output_dir(settings)
+    screenshots_config = screenshots_config_from_settings(settings)
+
+    summary = load_summary_document(source)
+    video_path = video
+    if video_path is None:
+        input_dir = Path(settings.get("input", {}).get("directory", "input"))
+        extensions = settings.get("input", {}).get("video_extensions")
+        video_path = find_video_file(input_dir, extensions=extensions)
+
+    typer.echo(f"Videó: {video_path}")
+    typer.echo(f"Screenshotok kivágása: {len([c for c in summary.chapters if c.screenshot])} jelölés...")
+
+    try:
+        manifest = extract_screenshots(
+            summary,
+            video_path=video_path,
+            output_dir=output_dir,
+            config=screenshots_config,
+        )
+    except (FileNotFoundError, RuntimeError) as exc:
+        typer.echo(f"Hiba: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    unique_files = len({record.filename for record in manifest.screenshots})
+    manifest_path = output or output_dir / "screenshots.json"
+    export_manifest(manifest, manifest_path)
+
+    typer.echo(f"Képek: {output_dir / manifest.images_dir} ({unique_files} fájl)")
+    typer.echo(f"Manifest: {manifest_path}")
+
+
+@app.command()
+def build(
+    source: Path = typer.Argument(
+        ...,
+        help="summary.json fájl",
+        exists=True,
+        readable=True,
+    ),
+    manifest: Path | None = typer.Option(
+        None,
+        "--manifest",
+        "-m",
+        help="screenshots.json manifest",
+    ),
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Markdown kimenet (notes.md)",
+    ),
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="config.yaml elérési útja",
+    ),
+) -> None:
+    """Obsidian-kompatibilis Markdown jegyzet generálása."""
+    settings = load_config(config)
+    output_dir = default_output_dir(settings)
+    markdown_config = markdown_config_from_settings(settings)
+
+    summary = load_summary_document(source)
+    manifest_path = manifest or output_dir / "screenshots.json"
+    screenshots_manifest = None
+
+    if manifest_path.exists():
+        screenshots_manifest = load_manifest(manifest_path)
+    else:
+        typer.echo(f"Figyelmeztetés: nincs manifest ({manifest_path}), képek nélkül készül.")
+
+    content = build_markdown(
+        summary,
+        manifest=screenshots_manifest,
+        config=markdown_config,
+    )
+
+    notes_path = output or output_dir / "notes.md"
+    export_markdown(content, notes_path)
+    typer.echo(f"Exportálva: {notes_path}")
+    typer.echo(f"Fejezetek: {len(summary.chapters)}")
 
 
 if __name__ == "__main__":

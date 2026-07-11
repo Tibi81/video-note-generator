@@ -30,5 +30,15 @@ ai:
   temperature: 0.3
   max_tokens: 4000
 
+screenshots:
+  format: png
+  width: 1280
+  dedup_threshold_seconds: 30
+
+markdown:
+  obsidian_wikilinks: true
+  include_practice: true
+  include_keywords: true
+
 output:
   directory: "output"

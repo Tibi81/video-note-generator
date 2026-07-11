@@ -36,6 +36,7 @@ def test_apply_provider_defaults_unknown_provider():
 
 def test_create_ai_provider_mistral_missing_key(monkeypatch):
     monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+    monkeypatch.setenv("MISTRAL_API_KEY", "")
     config = AIConfig(provider="mistral")
 
     with pytest.raises(RuntimeError, match="MISTRAL_API_KEY"):

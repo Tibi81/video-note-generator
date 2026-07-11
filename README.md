@@ -84,12 +84,28 @@ video-notes summarize output/chapters.json --provider mistral --stats
 pytest
 ```
 
-## Fázis 4 — AI összefoglalás
+## Fázis 5 — Screenshots + Markdown
 
-Fejezetenként: összefoglaló, fő tanulságok, kulcsszavak, gyakorlati feladat, screenshot jelölés.
+ffmpeg screenshot kivágás és Obsidian-kompatibilis `notes.md` generálás.
 
-## Pipeline (tervezett)
+### Használat
+
+```bash
+# 5. Screenshotok (ffmpeg)
+video-notes shots output/summary.json
+
+# 6. Obsidian jegyzet
+video-notes build output/summary.json --output output/notes.md
+```
+
+### Kimenet
+
+- `output/images/001.png` … — screenshotok
+- `output/screenshots.json` — manifest
+- `output/notes.md` — Obsidian jegyzet
+
+## Pipeline
 
 ```
-SRT → Parser → Cleaner → Chapters → Summarize → Screenshots → Markdown → Obsidian
+SRT → Parser → Cleaner → Chapters → Summarize → Shots → Build → Obsidian
 ```
