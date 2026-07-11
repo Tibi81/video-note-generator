@@ -161,6 +161,85 @@ class CleanerConfig(BaseModel):
     max_noise_words: int = 4
 
 
+class TextSegment(BaseModel):
+    """Rövid, időbélyeges szövegrészlet fejezet detektáláshoz."""
+
+    start: str
+    end: str
+    text: str
+    source_indices: list[int] = Field(default_factory=list)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def word_count(self) -> int:
+        return len(self.text.split())
+
+
+class Chapter(BaseModel):
+    """Logikus fejezet időbélyeggel és összefoglaló szöveggel."""
+
+    index: int
+    title: str
+    start: str
+    end: str
+    text: str
+    source_indices: list[int] = Field(default_factory=list)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def word_count(self) -> int:
+        return len(self.text.split())
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def duration_ms(self) -> int:
+        start_td = parse_srt_time(self.start)
+        end_td = parse_srt_time(self.end)
+        return max(0, int((end_td - start_td).total_seconds() * 1000))
+
+
+class ChapterStats(BaseModel):
+    """Fejezet detektálás statisztikái."""
+
+    chapter_count: int
+    segment_count: int
+    word_count: int
+    total_duration_seconds: float
+    avg_words_per_chapter: float
+    avg_chapter_duration_seconds: float
+    method: str
+    first_timestamp: str
+    last_timestamp: str
+
+
+class ChapterDocument(BaseModel):
+    """Fejezetekre bontott dokumentum."""
+
+    source_file: str
+    chapters: list[Chapter] = Field(default_factory=list)
+    stats: ChapterStats | None = None
+
+
+class ChaptersConfig(BaseModel):
+    """Fejezet detektálás beállításai."""
+
+    min_chapters: int = 15
+    max_chapters: int = 40
+    chunk_duration_minutes: int = 15
+    max_words_per_segment: int = 250
+    gap_threshold_seconds: int = 20
+    method: str = "heuristic"
+
+
+class AIConfig(BaseModel):
+    """AI provider beállítások."""
+
+    provider: str = "openai"
+    model: str = "gpt-4o"
+    temperature: float = 0.3
+    max_tokens: int = 4000
+
+
 def resolve_source_name(path: Path) -> str:
     """Relatív vagy abszolút fájlnév a dokumentum metaadatához."""
     try:

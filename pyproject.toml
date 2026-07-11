@@ -20,6 +20,9 @@ dependencies = [
 dev = [
     "pytest>=8.0",
 ]
+ai = [
+    "openai>=1.0",
+]
 
 [project.scripts]
 video-notes = "video_notes.main:app"

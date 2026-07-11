@@ -16,5 +16,19 @@ cleaner:
   min_words_per_block: 2
   max_noise_words: 4
 
+chapters:
+  min_chapters: 15
+  max_chapters: 40
+  chunk_duration_minutes: 15
+  max_words_per_segment: 250
+  gap_threshold_seconds: 20
+  method: heuristic
+
+ai:
+  provider: openai
+  model: gpt-4o
+  temperature: 0.3
+  max_tokens: 4000
+
 output:
   directory: "output"

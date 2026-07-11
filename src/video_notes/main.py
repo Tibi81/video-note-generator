@@ -5,8 +5,9 @@ from pathlib import Path
 import typer
 import yaml
 
+from video_notes.chapters import detect_chapters, export_chapters_json, load_clean_document
 from video_notes.cleaner import clean_document, export_clean_json, load_subtitle_document
-from video_notes.models import CleanerConfig
+from video_notes.models import AIConfig, ChaptersConfig, CleanerConfig
 from video_notes.parser import export_json, parse_srt_file
 
 app = typer.Typer(
@@ -26,6 +27,14 @@ def load_config(config_path: Path | None = None) -> dict:
 
 def cleaner_config_from_settings(settings: dict) -> CleanerConfig:
     return CleanerConfig.model_validate(settings.get("cleaner", {}))
+
+
+def chapters_config_from_settings(settings: dict) -> ChaptersConfig:
+    return ChaptersConfig.model_validate(settings.get("chapters", {}))
+
+
+def ai_config_from_settings(settings: dict) -> AIConfig:
+    return AIConfig.model_validate(settings.get("ai", {}))
 
 
 def format_duration(seconds: float) -> str:
@@ -86,6 +95,37 @@ def print_clean_stats(document) -> None:
     typer.echo(f"  Átlag szó/blokk:         {stats.avg_words_per_block:.2f}")
     typer.echo(f"  Első időbélyeg:          {stats.first_timestamp}")
     typer.echo(f"  Utolsó időbélyeg:        {stats.last_timestamp}")
+    typer.echo("")
+
+
+def print_chapter_stats(document) -> None:
+    stats = document.stats
+    if stats is None:
+        typer.echo("Nincs statisztika.")
+        return
+
+    typer.echo("")
+    typer.echo("Chapters statisztika")
+    typer.echo("-" * 40)
+    typer.echo(f"  Forrás:                  {document.source_file}")
+    typer.echo(f"  Módszer:                 {stats.method}")
+    typer.echo(f"  Szegmensek:              {stats.segment_count}")
+    typer.echo(f"  Fejezetek:               {stats.chapter_count}")
+    typer.echo(
+        f"  Időtartam:               {format_duration(stats.total_duration_seconds)}"
+        f" ({stats.total_duration_seconds:.0f} mp)"
+    )
+    typer.echo(f"  Szavak:                  {stats.word_count:,}")
+    typer.echo(f"  Átlag szó/fejezet:       {stats.avg_words_per_chapter:.2f}")
+    typer.echo(f"  Átlag fejezet hossz:     {stats.avg_chapter_duration_seconds:.2f} mp")
+    typer.echo(f"  Első időbélyeg:          {stats.first_timestamp}")
+    typer.echo(f"  Utolsó időbélyeg:        {stats.last_timestamp}")
+    typer.echo("")
+
+    for chapter in document.chapters[:10]:
+        typer.echo(f"  {chapter.index:02d}. {chapter.start[:8]}  {chapter.title}")
+    if len(document.chapters) > 10:
+        typer.echo(f"  ... és még {len(document.chapters) - 10} fejezet")
     typer.echo("")
 
 
@@ -172,6 +212,67 @@ def clean(
 
     if stats:
         print_clean_stats(cleaned)
+
+
+@app.command()
+def chapters(
+    source: Path = typer.Argument(
+        ...,
+        help="cleaned.json fájl",
+        exists=True,
+        readable=True,
+    ),
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Fejezetek JSON kimenet",
+    ),
+    stats: bool = typer.Option(
+        True,
+        "--stats/--no-stats",
+        help="Statisztika megjelenítése",
+    ),
+    method: str | None = typer.Option(
+        None,
+        "--method",
+        "-m",
+        help="heuristic vagy ai",
+    ),
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="config.yaml elérési útja",
+    ),
+) -> None:
+    """Tisztított felirat logikus fejezetekre bontása."""
+    settings = load_config(config)
+    chapters_config = chapters_config_from_settings(settings)
+    if method:
+        chapters_config.method = method
+
+    cleaned = load_clean_document(source)
+    ai_config = ai_config_from_settings(settings) if chapters_config.method == "ai" else None
+
+    try:
+        result = detect_chapters(
+            cleaned,
+            config=chapters_config,
+            ai_config=ai_config,
+        )
+    except RuntimeError as exc:
+        typer.echo(f"Hiba: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    if output is None:
+        output = default_output_dir(settings) / "chapters.json"
+
+    export_chapters_json(result, output)
+    typer.echo(f"Exportálva: {output}")
+
+    if stats:
+        print_chapter_stats(result)
 
 
 if __name__ == "__main__":
