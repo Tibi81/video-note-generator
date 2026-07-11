@@ -5,10 +5,12 @@ from pathlib import Path
 import typer
 import yaml
 
+from video_notes.ai import SUPPORTED_PROVIDERS, apply_provider_defaults
 from video_notes.chapters import detect_chapters, export_chapters_json, load_clean_document
 from video_notes.cleaner import clean_document, export_clean_json, load_subtitle_document
 from video_notes.models import AIConfig, ChaptersConfig, CleanerConfig
 from video_notes.parser import export_json, parse_srt_file
+from video_notes.summarize import export_summary_json, load_chapter_document, summarize_document
 
 app = typer.Typer(
     name="video-notes",
@@ -35,6 +37,15 @@ def chapters_config_from_settings(settings: dict) -> ChaptersConfig:
 
 def ai_config_from_settings(settings: dict) -> AIConfig:
     return AIConfig.model_validate(settings.get("ai", {}))
+
+
+def resolve_ai_config(
+    settings: dict,
+    provider: str | None = None,
+    model: str | None = None,
+) -> AIConfig:
+    config = ai_config_from_settings(settings)
+    return apply_provider_defaults(config, provider=provider, model=model)
 
 
 def format_duration(seconds: float) -> str:
@@ -126,6 +137,23 @@ def print_chapter_stats(document) -> None:
         typer.echo(f"  {chapter.index:02d}. {chapter.start[:8]}  {chapter.title}")
     if len(document.chapters) > 10:
         typer.echo(f"  ... és még {len(document.chapters) - 10} fejezet")
+    typer.echo("")
+
+
+def print_summary_stats(document) -> None:
+    stats = document.stats
+    if stats is None:
+        typer.echo("Nincs statisztika.")
+        return
+
+    typer.echo("")
+    typer.echo("Summary statisztika")
+    typer.echo("-" * 40)
+    typer.echo(f"  Forrás:                  {document.source_file}")
+    typer.echo(f"  AI provider:             {stats.provider} ({stats.model})")
+    typer.echo(f"  Feldolgozott fejezetek:  {stats.processed_count}/{stats.chapter_count}")
+    typer.echo(f"  Screenshot javaslatok:   {stats.screenshot_count}")
+    typer.echo(f"  Összefoglaló szavak:     {stats.word_count:,}")
     typer.echo("")
 
 
@@ -239,6 +267,17 @@ def chapters(
         "-m",
         help="heuristic vagy ai",
     ),
+    provider: str | None = typer.Option(
+        None,
+        "--provider",
+        "-p",
+        help=f"AI provider: {', '.join(SUPPORTED_PROVIDERS)}",
+    ),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help="AI modell neve (pl. mistral-small-latest, gpt-4o)",
+    ),
     config: Path | None = typer.Option(
         None,
         "--config",
@@ -253,7 +292,16 @@ def chapters(
         chapters_config.method = method
 
     cleaned = load_clean_document(source)
-    ai_config = ai_config_from_settings(settings) if chapters_config.method == "ai" else None
+    ai_config = None
+    if chapters_config.method == "ai":
+        try:
+            ai_config = resolve_ai_config(settings, provider=provider, model=model)
+            typer.echo(
+                f"AI provider: {ai_config.provider} ({ai_config.model})"
+            )
+        except RuntimeError as exc:
+            typer.echo(f"Hiba: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
 
     try:
         result = detect_chapters(
@@ -273,6 +321,79 @@ def chapters(
 
     if stats:
         print_chapter_stats(result)
+
+
+@app.command()
+def summarize(
+    source: Path = typer.Argument(
+        ...,
+        help="chapters.json fájl",
+        exists=True,
+        readable=True,
+    ),
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Feldolgozott fejezetek JSON kimenet",
+    ),
+    stats: bool = typer.Option(
+        True,
+        "--stats/--no-stats",
+        help="Statisztika megjelenítése",
+    ),
+    provider: str | None = typer.Option(
+        None,
+        "--provider",
+        "-p",
+        help=f"AI provider: {', '.join(SUPPORTED_PROVIDERS)}",
+    ),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help="AI modell neve",
+    ),
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="config.yaml elérési útja",
+    ),
+) -> None:
+    """Fejezetek AI-val történő összefoglalása tanulási jegyzethez."""
+    settings = load_config(config)
+
+    try:
+        ai_config = resolve_ai_config(settings, provider=provider, model=model)
+    except RuntimeError as exc:
+        typer.echo(f"Hiba: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(f"AI provider: {ai_config.provider} ({ai_config.model})")
+
+    chapters_doc = load_chapter_document(source)
+    typer.echo(f"Fejezetek feldolgozása: {len(chapters_doc.chapters)} db...")
+
+    try:
+        result = summarize_document(
+            chapters_doc,
+            ai_config=ai_config,
+            on_progress=lambda index, total, chapter: typer.echo(
+                f"  [{index}/{total}] {chapter.title}"
+            ),
+        )
+    except RuntimeError as exc:
+        typer.echo(f"Hiba: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    if output is None:
+        output = default_output_dir(settings) / "summary.json"
+
+    export_summary_json(result, output)
+    typer.echo(f"Exportálva: {output}")
+
+    if stats:
+        print_summary_stats(result)
 
 
 if __name__ == "__main__":

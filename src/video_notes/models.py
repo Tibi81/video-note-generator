@@ -234,10 +234,50 @@ class ChaptersConfig(BaseModel):
 class AIConfig(BaseModel):
     """AI provider beállítások."""
 
-    provider: str = "openai"
-    model: str = "gpt-4o"
+    provider: str = "mistral"
+    model: str = "mistral-small-latest"
     temperature: float = 0.3
     max_tokens: int = 4000
+
+
+class ScreenshotHint(BaseModel):
+    """Screenshot javaslat egy fejezethez."""
+
+    timestamp: str
+    reason: str
+
+
+class ProcessedChapter(BaseModel):
+    """AI-val feldolgozott fejezet."""
+
+    index: int
+    title: str
+    start: str
+    end: str
+    summary: str
+    key_points: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+    practice_task: str | None = None
+    screenshot: ScreenshotHint | None = None
+
+
+class SummaryStats(BaseModel):
+    """Összefoglaló generálás statisztikái."""
+
+    chapter_count: int
+    processed_count: int
+    screenshot_count: int
+    provider: str
+    model: str
+    word_count: int
+
+
+class SummaryDocument(BaseModel):
+    """Feldolgozott fejezetek dokumentuma."""
+
+    source_file: str
+    chapters: list[ProcessedChapter] = Field(default_factory=list)
+    stats: SummaryStats | None = None
 
 
 def resolve_source_name(path: Path) -> str:
