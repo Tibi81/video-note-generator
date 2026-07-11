@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 from video_notes.ai import (
+    complete_and_parse_with_retry,
     create_ai_provider,
     extract_json_array,
     load_prompt,
@@ -368,6 +370,7 @@ def detect_chapters_ai(
     ai_config: AIConfig,
     prompts_dir: Path | None = None,
     prompt_context: dict[str, str] | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> ChapterDocument:
     segments = expand_blocks_to_segments(
         document.blocks,
@@ -385,17 +388,29 @@ def detect_chapters_ai(
     )
 
     detected: list[tuple[str, str]] = []
-    for chunk in chunks:
+    total_chunks = len(chunks)
+    for chunk_index, chunk in enumerate(chunks, start=1):
+        if on_progress:
+            on_progress(chunk_index, total_chunks)
+
         prompt = render_prompt(
             prompt_template,
             transcript=format_transcript_chunk(chunk),
             **context,
         )
-        raw = provider.complete(
-            system_prompt="You are a precise assistant that returns only valid JSON.",
-            user_prompt=prompt,
-        )
-        for item in extract_json_array(raw):
+        try:
+            items = complete_and_parse_with_retry(
+                provider,
+                system_prompt="You are a precise assistant that returns only valid JSON.",
+                user_prompt=prompt,
+                parse=extract_json_array,
+            )
+        except RuntimeError as exc:
+            raise RuntimeError(
+                f"AI fejezetfelismerés hiba ({chunk_index}/{total_chunks} rész): {exc}"
+            ) from exc
+
+        for item in items:
             title = str(item.get("title", "")).strip()
             start = normalize_ai_timestamp(str(item.get("start", "")).strip())
             if title and start:
@@ -456,6 +471,7 @@ def detect_chapters(
     ai_config: AIConfig | None = None,
     prompts_dir: Path | None = None,
     prompt_context: dict[str, str] | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> ChapterDocument:
     if config.method == "ai":
         if ai_config is None:
@@ -466,6 +482,7 @@ def detect_chapters(
             ai_config=ai_config,
             prompts_dir=prompts_dir,
             prompt_context=prompt_context,
+            on_progress=on_progress,
         )
     return detect_chapters_heuristic(document, config)
 

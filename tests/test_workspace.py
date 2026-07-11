@@ -4,6 +4,7 @@ from video_notes.models import OutputConfig
 from video_notes.workspace import (
     archive_input_files,
     next_batch_id,
+    resolve_batch_dir,
     resolve_process_workspace,
 )
 
@@ -44,6 +45,10 @@ def test_resolve_process_workspace_explicit_output(tmp_path: Path):
 
     assert output_dir == explicit
     assert batch_id is None
+
+
+def test_resolve_batch_dir_from_summary_path():
+    assert resolve_batch_dir(Path("output/001/summary.json")) == Path("output/001")
 
 
 def test_archive_input_files_with_batch_id(tmp_path: Path):

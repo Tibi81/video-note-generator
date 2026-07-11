@@ -145,6 +145,83 @@ def test_render_prompt_substitutes_domain_hints():
     assert "5" in result
 
 
+def test_extract_json_array_recovers_from_truncated_response():
+    # A modell válasza a 3. elem közben megszakadt (pl. max_tokens elérése).
+    raw = (
+        '[{"title": "Bevezetés", "start": "00:00:01"}, '
+        '{"title": "Design System", "start": "00:05:00"}, '
+        '{"title": "Auto Layout és variánsok r'
+    )
+    data = extract_json_array(raw)
+    assert len(data) == 2
+    assert data[-1]["title"] == "Design System"
+
+
+def test_extract_json_object_recovers_from_truncated_response():
+    raw = (
+        '{"summary": "Rövid összefoglaló.", "key_points": ["⭐ Egy", "⭐ Kettő"], '
+        '"keywords": ["teszt"], "practice_task": "Csiná'
+    )
+    data = extract_json_object(raw)
+    assert data["summary"] == "Rövid összefoglaló."
+    assert data["key_points"] == ["⭐ Egy", "⭐ Kettő"]
+
+
+def test_extract_json_array_raises_with_full_context_when_unrepairable():
+    raw = "not json at all, and definitely not truncated json either"
+    with pytest.raises(RuntimeError, match="nem érvényes JSON"):
+        extract_json_array(raw)
+
+
+def test_complete_and_parse_with_retry_succeeds_after_failure():
+    from video_notes.ai import complete_and_parse_with_retry
+
+    class FlakyProvider:
+        def __init__(self):
+            self.calls = 0
+
+        def complete(self, system_prompt: str, user_prompt: str) -> str:
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("átmeneti hiba")
+            return '{"summary": "ok"}'
+
+    provider = FlakyProvider()
+    result = complete_and_parse_with_retry(
+        provider,
+        system_prompt="sys",
+        user_prompt="user",
+        parse=extract_json_object,
+    )
+
+    assert result == {"summary": "ok"}
+    assert provider.calls == 2
+
+
+def test_complete_and_parse_with_retry_raises_after_exhausting_attempts():
+    from video_notes.ai import complete_and_parse_with_retry
+
+    class AlwaysFailingProvider:
+        def __init__(self):
+            self.calls = 0
+
+        def complete(self, system_prompt: str, user_prompt: str) -> str:
+            self.calls += 1
+            raise RuntimeError("tartós hiba")
+
+    provider = AlwaysFailingProvider()
+    with pytest.raises(RuntimeError, match="tartós hiba"):
+        complete_and_parse_with_retry(
+            provider,
+            system_prompt="sys",
+            user_prompt="user",
+            parse=extract_json_object,
+            max_retries=2,
+        )
+
+    assert provider.calls == 3
+
+
 def test_apply_provider_defaults_gemini():
     config = AIConfig(provider="mistral")
     result = apply_provider_defaults(config, provider="gemini")

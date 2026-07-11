@@ -1,13 +1,16 @@
 from pathlib import Path
 
+import pytest
+
 from video_notes.chapters import (
+    detect_chapters_ai,
     detect_chapters_heuristic,
     expand_blocks_to_segments,
     guess_title,
     split_block_into_segments,
 )
 from video_notes.cleaner import clean_document
-from video_notes.models import ChaptersConfig, CleanBlock, TopicKeyword, default_topic_keywords
+from video_notes.models import AIConfig, ChaptersConfig, CleanBlock, TopicKeyword, default_topic_keywords
 from video_notes.parser import parse_srt_file
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -81,3 +84,73 @@ def test_expand_blocks_to_segments_preserves_order():
     segments = expand_blocks_to_segments(cleaned.blocks, max_words=10)
     assert len(segments) >= len(cleaned.blocks)
     assert segments[0].start <= segments[-1].start
+
+
+class FakeChapterProvider:
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls = 0
+
+    def complete(self, system_prompt: str, user_prompt: str) -> str:
+        self.calls += 1
+        response = self._responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+
+def test_detect_chapters_ai_reports_progress(tmp_path, monkeypatch):
+    document = parse_srt_file(FIXTURES / "sample.srt")
+    cleaned = clean_document(document)
+    config = ChaptersConfig(chunk_duration_minutes=1, method="ai")
+
+    prompts_dir = tmp_path / "prompts"
+    prompts_dir.mkdir()
+    (prompts_dir / "chapter.md").write_text("$transcript", encoding="utf-8")
+
+    fake_provider = FakeChapterProvider(
+        ['[{"title": "Bevezetés", "start": "00:00:01"}]'] * 10
+    )
+    monkeypatch.setattr(
+        "video_notes.chapters.create_ai_provider",
+        lambda ai_config: fake_provider,
+    )
+
+    progress_calls: list[tuple[int, int]] = []
+    result = detect_chapters_ai(
+        cleaned,
+        chapters_config=config,
+        ai_config=AIConfig(provider="mistral"),
+        prompts_dir=prompts_dir,
+        on_progress=lambda index, total: progress_calls.append((index, total)),
+    )
+
+    assert result.chapters
+    assert progress_calls
+    assert progress_calls[0] == (1, len(progress_calls))
+
+
+def test_detect_chapters_ai_wraps_provider_error_with_chunk_context(tmp_path, monkeypatch):
+    document = parse_srt_file(FIXTURES / "sample.srt")
+    cleaned = clean_document(document)
+    config = ChaptersConfig(chunk_duration_minutes=1, method="ai")
+
+    prompts_dir = tmp_path / "prompts"
+    prompts_dir.mkdir()
+    (prompts_dir / "chapter.md").write_text("$transcript", encoding="utf-8")
+
+    fake_provider = FakeChapterProvider(
+        [RuntimeError("Mistral API hiba: rate limit")] * 10
+    )
+    monkeypatch.setattr(
+        "video_notes.chapters.create_ai_provider",
+        lambda ai_config: fake_provider,
+    )
+
+    with pytest.raises(RuntimeError, match=r"1/\d+ rész"):
+        detect_chapters_ai(
+            cleaned,
+            chapters_config=config,
+            ai_config=AIConfig(provider="mistral"),
+            prompts_dir=prompts_dir,
+        )

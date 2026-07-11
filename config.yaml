@@ -25,7 +25,7 @@ chapters:
   chunk_duration_minutes: 15
   max_words_per_segment: 250
   gap_threshold_seconds: 20
-  method: heuristic
+  method: ai
   topic_keywords:
     - keyword: "auto layout"
       title: "Auto Layout"

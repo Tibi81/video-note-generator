@@ -73,8 +73,10 @@ video-notes process input/ --skip-summarize
 
 A `process` parancs alapértelmezés szerint:
 
-1. **Számozott kimenet** — `output/001/`, `output/002/`, … (jegyzet, JSON, képek)
+1. **Számozott kimenet** — `output/001/`, `output/002/`, … (jegyzet, JSON, `images/` almappa)
 2. **Forrás archiválás** — sikeres feldolgozás után a videó + SRT átkerül `processed/001/`-be
+
+Minden köteg önálló mappa: a screenshotok az adott `output/NNN/images/` alá kerülnek, nem a gyökér `output/images/`-be.
 
 Az `input/` mappa így mindig üresen várja a következő videót; a korábbi anyagok nem keverednek.
 
@@ -108,11 +110,11 @@ video-notes chapters output/cleaned.json --method ai --provider mistral --stats
 # 5. AI összefoglaló
 video-notes summarize output/chapters.json --provider mistral --stats
 
-# 6. Screenshotok (ffmpeg)
-video-notes shots output/summary.json
+# 6. Screenshotok — output/001/images/ alá (a summary.json mappájából)
+video-notes shots output/001/summary.json
 
-# 7. Obsidian jegyzet
-video-notes build output/summary.json --output output/notes.md
+# 7. Obsidian jegyzet — automatikusan output/001/screenshots.json-t használ
+video-notes build output/001/summary.json
 ```
 
 ## Workshop típus testreszabása

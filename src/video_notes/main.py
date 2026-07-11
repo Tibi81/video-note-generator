@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import typer
 import yaml
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
 
 from video_notes.ai import SUPPORTED_PROVIDERS, apply_provider_defaults, prompt_context_from_settings
 from video_notes.chapters import detect_chapters, export_chapters_json, load_clean_document
@@ -19,7 +27,7 @@ from video_notes.models import (
 from video_notes.markdown import build_markdown, export_markdown
 from video_notes.parser import export_json, parse_srt_file
 from video_notes.pipeline import resolve_input_paths, run_pipeline
-from video_notes.workspace import archive_input_files, resolve_process_workspace
+from video_notes.workspace import archive_input_files, resolve_batch_dir, resolve_process_workspace
 from video_notes.screenshots import (
     export_manifest,
     extract_screenshots,
@@ -338,8 +346,9 @@ def chapters(
             config=chapters_config,
             ai_config=ai_config,
             prompt_context=prompt_context_from_settings(settings),
+            on_progress=lambda index, total: typer.echo(f"  [{index}/{total}] AI hívás..."),
         )
-    except RuntimeError as exc:
+    except Exception as exc:
         typer.echo(f"Hiba: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
@@ -413,7 +422,7 @@ def summarize(
                 f"  [{index}/{total}] {chapter.title}"
             ),
         )
-    except RuntimeError as exc:
+    except Exception as exc:
         typer.echo(f"Hiba: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
@@ -456,7 +465,7 @@ def shots(
 ) -> None:
     """Screenshotok kivágása a videóból ffmpeg-gel."""
     settings = load_config(config)
-    output_dir = default_output_dir(settings)
+    batch_dir = resolve_batch_dir(source)
     screenshots_config = screenshots_config_from_settings(settings)
 
     summary = load_summary_document(source)
@@ -466,14 +475,14 @@ def shots(
         extensions = settings.get("input", {}).get("video_extensions")
         video_path = find_video_file(input_dir, extensions=extensions)
 
-    typer.echo(f"Videó: {video_path}")
+    typer.echo(f"Videó: {video_path.name}")
     typer.echo(f"Screenshotok kivágása: {len([c for c in summary.chapters if c.screenshot])} jelölés...")
 
     try:
         manifest = extract_screenshots(
             summary,
             video_path=video_path,
-            output_dir=output_dir,
+            output_dir=batch_dir,
             config=screenshots_config,
         )
     except (FileNotFoundError, RuntimeError) as exc:
@@ -481,10 +490,10 @@ def shots(
         raise typer.Exit(code=1) from exc
 
     unique_files = len({record.filename for record in manifest.screenshots})
-    manifest_path = output or output_dir / "screenshots.json"
+    manifest_path = output or batch_dir / "screenshots.json"
     export_manifest(manifest, manifest_path)
 
-    typer.echo(f"Képek: {output_dir / manifest.images_dir} ({unique_files} fájl)")
+    typer.echo(f"Képek: {batch_dir / manifest.images_dir} ({unique_files} fájl)")
     typer.echo(f"Manifest: {manifest_path}")
 
 
@@ -517,11 +526,11 @@ def build(
 ) -> None:
     """Obsidian-kompatibilis Markdown jegyzet generálása."""
     settings = load_config(config)
-    output_dir = default_output_dir(settings)
+    batch_dir = resolve_batch_dir(source)
     markdown_config = markdown_config_from_settings(settings)
 
     summary = load_summary_document(source)
-    manifest_path = manifest or output_dir / "screenshots.json"
+    manifest_path = manifest or batch_dir / "screenshots.json"
     screenshots_manifest = None
 
     if manifest_path.exists():
@@ -535,7 +544,7 @@ def build(
         config=markdown_config,
     )
 
-    notes_path = output or output_dir / "notes.md"
+    notes_path = output or batch_dir / "notes.md"
     export_markdown(content, notes_path)
     typer.echo(f"Exportálva: {notes_path}")
     typer.echo(f"Fejezetek: {len(summary.chapters)}")
@@ -640,8 +649,16 @@ def process(
             prompt_context=prompt_context_from_settings(settings),
             log=typer.echo,
         )
-    except RuntimeError as exc:
-        typer.echo(f"Hiba: {exc}", err=True)
+    except Exception as exc:
+        typer.echo("", err=True)
+        typer.echo(f"Hiba ({type(exc).__name__}): {exc}", err=True)
+        typer.echo(
+            f"  A köteg részleges kimenete itt maradt: {output_dir}", err=True
+        )
+        typer.echo(
+            "  A forrásfájlok NEM kerültek archiválásra — újrafuttatható.",
+            err=True,
+        )
         raise typer.Exit(code=1) from exc
 
     typer.echo("")

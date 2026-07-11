@@ -4,8 +4,10 @@ import json
 import os
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
 from string import Template
+from typing import TypeVar
 
 from dotenv import load_dotenv
 
@@ -57,15 +59,18 @@ class MistralProvider(AIProvider):
         self._config = config
 
     def complete(self, system_prompt: str, user_prompt: str) -> str:
-        response = self._client.chat.complete(
-            model=self._config.model,
-            temperature=self._config.temperature,
-            max_tokens=self._config.max_tokens,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-        )
+        try:
+            response = self._client.chat.complete(
+                model=self._config.model,
+                temperature=self._config.temperature,
+                max_tokens=self._config.max_tokens,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+        except Exception as exc:  # noqa: BLE001 - normalize any SDK error
+            raise RuntimeError(f"Mistral API hiba: {exc}") from exc
         content = response.choices[0].message.content
         if not content:
             raise RuntimeError("A Mistral AI üres választ adott.")
@@ -100,15 +105,18 @@ class GeminiProvider(AIProvider):
         self._genai_types = genai_types
 
     def complete(self, system_prompt: str, user_prompt: str) -> str:
-        response = self._client.models.generate_content(
-            model=self._config.model,
-            contents=user_prompt,
-            config=self._genai_types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                temperature=self._config.temperature,
-                max_output_tokens=self._config.max_tokens,
-            ),
-        )
+        try:
+            response = self._client.models.generate_content(
+                model=self._config.model,
+                contents=user_prompt,
+                config=self._genai_types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    temperature=self._config.temperature,
+                    max_output_tokens=self._config.max_tokens,
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 - normalize any SDK error
+            raise RuntimeError(f"Gemini API hiba: {exc}") from exc
         content = response.text
         if not content:
             raise RuntimeError("A Gemini AI üres választ adott.")
@@ -136,15 +144,18 @@ class OpenAIProvider(AIProvider):
         self._config = config
 
     def complete(self, system_prompt: str, user_prompt: str) -> str:
-        response = self._client.chat.completions.create(
-            model=self._config.model,
-            temperature=self._config.temperature,
-            max_tokens=self._config.max_tokens,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-        )
+        try:
+            response = self._client.chat.completions.create(
+                model=self._config.model,
+                temperature=self._config.temperature,
+                max_tokens=self._config.max_tokens,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+        except Exception as exc:  # noqa: BLE001 - normalize any SDK error
+            raise RuntimeError(f"OpenAI API hiba: {exc}") from exc
         content = response.choices[0].message.content
         if not content:
             raise RuntimeError("Az OpenAI üres választ adott.")
@@ -216,16 +227,98 @@ def create_ai_provider(config: AIConfig) -> AIProvider:
     raise RuntimeError(f"Ismeretlen AI provider: {config.provider}. Elérhető: {available}")
 
 
-def extract_json_array(text: str) -> list[dict]:
+def _strip_code_fence(text: str) -> str:
     cleaned = text.strip()
     if cleaned.startswith("```"):
         cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
         cleaned = re.sub(r"\s*```$", "", cleaned)
+    return cleaned
+
+
+def _invalid_json_message(raw_text: str) -> str:
+    limit = 600
+    length = len(raw_text)
+    if length <= limit:
+        snippet = raw_text
+    else:
+        head = raw_text[: limit // 2]
+        tail = raw_text[-limit // 2 :]
+        snippet = f"{head}\n…[{length - limit} karakter kimaradt]…\n{tail}"
+    return f"Az AI válasz nem érvényes JSON ({length} karakter):\n{snippet}"
+
+
+def _json_cut_candidates(text: str) -> list[tuple[int, list[str]]]:
+    """Minden pontot összegyűjt, ahol a szöveg lezárt string vagy lezárt {}/[] után áll.
+    Ezek jelöltek a csonka JSON válasz biztonságos levágási pontjaira."""
+    in_string = False
+    escape = False
+    stack: list[str] = []
+    candidates: list[tuple[int, list[str]]] = []
+
+    for i, ch in enumerate(text):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+                candidates.append((i + 1, list(stack)))
+            continue
+
+        if ch == '"':
+            in_string = True
+        elif ch in "{[":
+            stack.append(ch)
+        elif ch in "}]":
+            if stack:
+                stack.pop()
+            candidates.append((i + 1, list(stack)))
+
+    return candidates
+
+
+def repair_truncated_json(text: str) -> str | None:
+    """Csonka (token-limit miatt félbeszakadt) JSON válasz javítási kísérlete.
+
+    A modell válasza néha a generálás közben megszakad (pl. max_tokens elérése).
+    Ez a függvény megkeresi az utolsó teljesen lezárt elemet, és onnan zárja le
+    a nyitott zárójeleket/kapcsos zárójeleket, elhagyva a befejezetlen töredéket.
+    """
+    stripped = text.strip()
+    if not stripped or stripped[0] not in "{[":
+        return None
+
+    closers = {"{": "}", "[": "]"}
+    candidates = _json_cut_candidates(stripped)
+
+    for cut_index, stack_at_cut in reversed(candidates):
+        if not stack_at_cut:
+            # Nincs mit levágni — a szöveg végén helyesen zárt, más a hiba oka.
+            continue
+        truncated = re.sub(r",\s*$", "", stripped[:cut_index])
+        repaired = truncated + "".join(closers[c] for c in reversed(stack_at_cut))
+        if repaired == stripped:
+            continue
+        try:
+            json.loads(repaired)
+        except json.JSONDecodeError:
+            continue
+        return repaired
+
+    return None
+
+
+def extract_json_array(text: str) -> list[dict]:
+    cleaned = _strip_code_fence(text)
 
     try:
         data = json.loads(cleaned)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Az AI válasz nem érvényes JSON: {text[:200]}") from exc
+    except json.JSONDecodeError:
+        repaired = repair_truncated_json(cleaned)
+        if repaired is None:
+            raise RuntimeError(_invalid_json_message(text)) from None
+        data = json.loads(repaired)
 
     if not isinstance(data, list):
         raise RuntimeError("Az AI válasznak JSON tömbnek kell lennie.")
@@ -233,16 +326,43 @@ def extract_json_array(text: str) -> list[dict]:
 
 
 def extract_json_object(text: str) -> dict:
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-        cleaned = re.sub(r"\s*```$", "", cleaned)
+    cleaned = _strip_code_fence(text)
 
     try:
         data = json.loads(cleaned)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Az AI válasz nem érvényes JSON: {text[:200]}") from exc
+    except json.JSONDecodeError:
+        repaired = repair_truncated_json(cleaned)
+        if repaired is None:
+            raise RuntimeError(_invalid_json_message(text)) from None
+        data = json.loads(repaired)
 
     if not isinstance(data, dict):
         raise RuntimeError("Az AI válasznak JSON objektumnak kell lennie.")
     return data
+
+
+T = TypeVar("T")
+
+
+def complete_and_parse_with_retry(
+    provider: AIProvider,
+    system_prompt: str,
+    user_prompt: str,
+    parse: Callable[[str], T],
+    max_retries: int = 2,
+) -> T:
+    """Provider hívása + válasz feldolgozása, hibánál (pl. csonka JSON) újrapróbálással.
+
+    Az LLM válaszok nem determinisztikusak — egy csonkolt/hibás JSON válasz gyakran
+    egyszerű újrapróbálkozással (új generálással) megoldódik, anélkül hogy az egész
+    (akár többórás) pipeline-t újra kellene futtatni egy elszigetelt hiba miatt.
+    """
+    last_error: RuntimeError | None = None
+    for _ in range(max_retries + 1):
+        try:
+            raw = provider.complete(system_prompt=system_prompt, user_prompt=user_prompt)
+            return parse(raw)
+        except RuntimeError as exc:
+            last_error = exc
+    assert last_error is not None
+    raise last_error

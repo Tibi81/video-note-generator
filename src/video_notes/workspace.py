@@ -47,6 +47,11 @@ def resolve_process_workspace(
     return output_base / batch_id, batch_id
 
 
+def resolve_batch_dir(artifact_path: Path) -> Path:
+    """Köteg mappa egy summary/chapters/manifest fájl alapján (pl. output/001/)."""
+    return artifact_path.parent
+
+
 def archive_input_files(
     subtitle: Path,
     video: Path | None,

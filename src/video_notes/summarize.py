@@ -7,6 +7,7 @@ from pathlib import Path
 
 from video_notes.ai import (
     AIProvider,
+    complete_and_parse_with_retry,
     create_ai_provider,
     extract_json_object,
     load_prompt,
@@ -117,14 +118,20 @@ def summarize_chapter(
         **prompt_context,
     )
     domain = prompt_context.get("practice_context", "workshop")
-    raw = provider.complete(
-        system_prompt=(
-            "You are a precise assistant that returns only valid JSON "
-            f"for Hungarian study notes. Context: {domain}."
-        ),
-        user_prompt=prompt,
-    )
-    payload = extract_json_object(raw)
+    try:
+        payload = complete_and_parse_with_retry(
+            provider,
+            system_prompt=(
+                "You are a precise assistant that returns only valid JSON "
+                f"for Hungarian study notes. Context: {domain}."
+            ),
+            user_prompt=prompt,
+            parse=extract_json_object,
+        )
+    except RuntimeError as exc:
+        raise RuntimeError(
+            f"AI összefoglaló hiba ({chapter.index}. fejezet, \"{chapter.title}\"): {exc}"
+        ) from exc
     return parse_processed_chapter(chapter, payload)
 
 

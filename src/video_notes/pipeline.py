@@ -111,6 +111,7 @@ def run_pipeline(
         config=chapters_config or ChaptersConfig(),
         ai_config=ai_config if (chapters_config or ChaptersConfig()).method == "ai" else None,
         prompt_context=prompt_context,
+        on_progress=lambda index, total: emit(f"       [{index}/{total}] AI hívás..."),
     )
     chapters_path = output_dir / "chapters.json"
     export_chapters_json(chapters_result, chapters_path)

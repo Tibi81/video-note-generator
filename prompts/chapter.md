@@ -9,8 +9,8 @@ Your task:
 
 Return ONLY valid JSON array, no markdown fences:
 [
-  {"title": "Bevezetés", "start": "00:04:07"},
-  {"title": "Design System alapok", "start": "00:21:14"}
+  {{"title": "Bevezetés", "start": "00:04:07"}},
+  {{"title": "Design System alapok", "start": "00:21:14"}}
 ]
 
 Rules:
