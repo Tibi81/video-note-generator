@@ -107,6 +107,60 @@ class SubtitleDocument(BaseModel):
         )
 
 
+class CleanBlock(BaseModel):
+    """Összevont, tisztított szövegblokk időbélyegekkel."""
+
+    start: str
+    end: str
+    text: str
+    source_indices: list[int] = Field(default_factory=list)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def word_count(self) -> int:
+        return len(self.text.split())
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def duration_ms(self) -> int:
+        start_td = parse_srt_time(self.start)
+        end_td = parse_srt_time(self.end)
+        return max(0, int((end_td - start_td).total_seconds() * 1000))
+
+
+class CleanStats(BaseModel):
+    """Tisztítás statisztikái."""
+
+    original_entries: int
+    removed_entries: int
+    merged_blocks: int
+    word_count: int
+    char_count: int
+    total_duration_seconds: float
+    avg_words_per_block: float
+    reduction_percent: float
+    first_timestamp: str
+    last_timestamp: str
+
+
+class CleanDocument(BaseModel):
+    """Tisztított felirat dokumentum."""
+
+    source_file: str
+    blocks: list[CleanBlock] = Field(default_factory=list)
+    stats: CleanStats | None = None
+
+
+class CleanerConfig(BaseModel):
+    """Cleaner beállítások."""
+
+    remove_fillers: bool = True
+    merge_blocks: bool = True
+    merge_gap_ms: int = 2000
+    min_words_per_block: int = 2
+    max_noise_words: int = 4
+
+
 def resolve_source_name(path: Path) -> str:
     """Relatív vagy abszolút fájlnév a dokumentum metaadatához."""
     try:

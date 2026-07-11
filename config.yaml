@@ -9,5 +9,12 @@ input:
 parser:
   encoding: "utf-8"
 
+cleaner:
+  remove_fillers: true
+  merge_blocks: true
+  merge_gap_ms: 2000
+  min_words_per_block: 2
+  max_noise_words: 4
+
 output:
   directory: "output"

@@ -6,6 +6,11 @@ Videós workshopok feldolgozása Obsidian-kompatibilis tanulási jegyzetekké.
 
 SRT felirat beolvasása, strukturált JSON export, statisztika.
 
+## Fázis 2 — Cleaner
+
+Zaj eltávolítása (kitöltőszavak, chat, technikai részek), duplikátumok szűrése,
+tördelt mondatok összevonása időbélyegek megőrzésével.
+
 ### Telepítés
 
 ```bash
@@ -16,13 +21,18 @@ pip install -e ".[dev]"
 ### Használat
 
 ```bash
-video-notes input/webinar.srt --output output/parsed.json --stats
+# 1. Parser
+video-notes parse input/webinar.srt --output output/parsed.json --stats
+
+# 2. Cleaner (SRT-ből vagy parsed.json-ból)
+video-notes clean input/webinar.srt --output output/cleaned.json --stats
+video-notes clean output/parsed.json --output output/cleaned.json --stats
 ```
 
 ### Kimenet
 
-- `output/parsed.json` — strukturált feliratblokkok időbélyegekkel
-- Konzol statisztika: blokk szám, időtartam, szószám
+- `output/parsed.json` — nyers feliratblokkok
+- `output/cleaned.json` — tisztított, összevont blokkok `source_indices`-szel
 
 ### Tesztek
 
