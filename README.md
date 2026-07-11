@@ -56,7 +56,21 @@ video-notes summarize output/chapters.json --provider gemini
 video-notes summarize output/chapters.json --provider openai
 ```
 
-### Használat
+### Teljes pipeline egy lépésben
+
+```bash
+# Alapértelmezett: input/ mappa → output/ mappa
+video-notes process
+
+# Konkrét fájlok
+video-notes process input/webinar.srt
+video-notes process input/ --provider gemini --output output/03-webinar/
+
+# API nélkül (csak parse + clean + chapters)
+video-notes process input/ --skip-summarize
+```
+
+### Lépésenként
 
 ```bash
 # 1. Parser
@@ -70,42 +84,10 @@ video-notes chapters output/cleaned.json --output output/chapters.json --stats
 
 # 4. AI összefoglaló (MISTRAL_API_KEY vagy GOOGLE_API_KEY a .env-ben)
 video-notes summarize output/chapters.json --provider mistral --stats
-```
 
-### Kimenet
-
-- `output/parsed.json` — nyers feliratblokkok
-- `output/cleaned.json` — tisztított, összevont blokkok
-- `output/chapters.json` — fejezetek címekkel és időbélyegekkel
-
-### Tesztek
-
-```bash
-pytest
-```
-
-## Fázis 5 — Screenshots + Markdown
-
-ffmpeg screenshot kivágás és Obsidian-kompatibilis `notes.md` generálás.
-
-### Használat
-
-```bash
 # 5. Screenshotok (ffmpeg)
 video-notes shots output/summary.json
 
 # 6. Obsidian jegyzet
 video-notes build output/summary.json --output output/notes.md
-```
-
-### Kimenet
-
-- `output/images/001.png` … — screenshotok
-- `output/screenshots.json` — manifest
-- `output/notes.md` — Obsidian jegyzet
-
-## Pipeline
-
-```
-SRT → Parser → Cleaner → Chapters → Summarize → Shots → Build → Obsidian
 ```

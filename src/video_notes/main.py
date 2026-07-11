@@ -17,6 +17,7 @@ from video_notes.models import (
 )
 from video_notes.markdown import build_markdown, export_markdown
 from video_notes.parser import export_json, parse_srt_file
+from video_notes.pipeline import resolve_input_paths, run_pipeline
 from video_notes.screenshots import (
     export_manifest,
     extract_screenshots,
@@ -530,6 +531,110 @@ def build(
     export_markdown(content, notes_path)
     typer.echo(f"Exportálva: {notes_path}")
     typer.echo(f"Fejezetek: {len(summary.chapters)}")
+
+
+@app.command()
+def process(
+    source: Path = typer.Argument(
+        Path("input"),
+        help="input/ mappa vagy .srt fájl",
+    ),
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Kimeneti mappa",
+    ),
+    video: Path | None = typer.Option(
+        None,
+        "--video",
+        "-v",
+        help="Videófájl (auto-felismerés input/ mappából)",
+    ),
+    provider: str | None = typer.Option(
+        None,
+        "--provider",
+        "-p",
+        help=f"AI provider: {', '.join(SUPPORTED_PROVIDERS)}",
+    ),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help="AI modell neve",
+    ),
+    skip_summarize: bool = typer.Option(
+        False,
+        "--skip-summarize",
+        help="AI összefoglaló kihagyása (csak parse/clean/chapters)",
+    ),
+    skip_shots: bool = typer.Option(
+        False,
+        "--skip-shots",
+        help="Screenshot kivágás kihagyása",
+    ),
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="config.yaml elérési útja",
+    ),
+) -> None:
+    """Teljes pipeline egy lepesben: SRT -> Obsidian jegyzet."""
+    settings = load_config(config)
+    output_dir = output or default_output_dir(settings)
+
+    if not source.exists():
+        typer.echo(f"Hiba: a forrás nem található: {source}", err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        subtitle, detected_video = resolve_input_paths(source, settings)
+    except FileNotFoundError as exc:
+        typer.echo(f"Hiba: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    video_path = video or detected_video
+
+    typer.echo("Video Note Generator — teljes feldolgozás")
+    typer.echo("=" * 40)
+    typer.echo(f"  Felirat:  {subtitle}")
+    typer.echo(f"  Videó:    {video_path or '(nincs)'}")
+    typer.echo(f"  Kimenet:  {output_dir}")
+    typer.echo("")
+
+    ai_config = None
+    if not skip_summarize:
+        try:
+            ai_config = resolve_ai_config(settings, provider=provider, model=model)
+        except RuntimeError as exc:
+            typer.echo(f"Hiba: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+
+    try:
+        result_paths = run_pipeline(
+            subtitle,
+            output_dir,
+            video=video_path,
+            encoding=settings.get("parser", {}).get("encoding", "utf-8"),
+            cleaner_config=cleaner_config_from_settings(settings),
+            chapters_config=chapters_config_from_settings(settings),
+            ai_config=ai_config,
+            screenshots_config=screenshots_config_from_settings(settings),
+            markdown_config=markdown_config_from_settings(settings),
+            skip_summarize=skip_summarize,
+            skip_shots=skip_shots,
+            log=typer.echo,
+        )
+    except RuntimeError as exc:
+        typer.echo(f"Hiba: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo("")
+    typer.echo("Kész!")
+    if "notes" in result_paths:
+        typer.echo(f"  Obsidian jegyzet: {result_paths['notes']}")
+    elif "chapters" in result_paths:
+        typer.echo(f"  Fejezetek:        {result_paths['chapters']}")
 
 
 if __name__ == "__main__":
