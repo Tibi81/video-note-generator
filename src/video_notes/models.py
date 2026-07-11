@@ -336,6 +336,16 @@ class MarkdownConfig(BaseModel):
     title: str | None = None
 
 
+class OutputConfig(BaseModel):
+    """Kimenet és archiválás beállításai."""
+
+    directory: str = "output"
+    processed_directory: str = "processed"
+    auto_number: bool = True
+    archive_inputs: bool = True
+    number_padding: int = 3
+
+
 class ScreenshotRecord(BaseModel):
     """Egy kivágott vagy tervezett screenshot metaadata."""
 

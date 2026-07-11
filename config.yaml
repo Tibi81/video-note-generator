@@ -101,3 +101,7 @@ markdown:
 
 output:
   directory: "output"
+  processed_directory: "processed"
+  auto_number: true
+  archive_inputs: true
+  number_padding: 3

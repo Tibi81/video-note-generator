@@ -13,11 +13,13 @@ from video_notes.models import (
     ChaptersConfig,
     CleanerConfig,
     MarkdownConfig,
+    OutputConfig,
     ScreenshotsConfig,
 )
 from video_notes.markdown import build_markdown, export_markdown
 from video_notes.parser import export_json, parse_srt_file
 from video_notes.pipeline import resolve_input_paths, run_pipeline
+from video_notes.workspace import archive_input_files, resolve_process_workspace
 from video_notes.screenshots import (
     export_manifest,
     extract_screenshots,
@@ -80,6 +82,10 @@ def format_duration(seconds: float) -> str:
 
 def default_output_dir(settings: dict) -> Path:
     return Path(settings.get("output", {}).get("directory", "output"))
+
+
+def output_config_from_settings(settings: dict) -> OutputConfig:
+    return OutputConfig.model_validate(settings.get("output", {}))
 
 
 def print_parse_stats(document) -> None:
@@ -583,7 +589,11 @@ def process(
 ) -> None:
     """Teljes pipeline egy lepesben: SRT -> Obsidian jegyzet."""
     settings = load_config(config)
-    output_dir = output or default_output_dir(settings)
+    output_config = output_config_from_settings(settings)
+    output_dir, batch_id = resolve_process_workspace(
+        output_config,
+        explicit_output=output,
+    )
 
     if not source.exists():
         typer.echo(f"Hiba: a forrás nem található: {source}", err=True)
@@ -601,6 +611,8 @@ def process(
     typer.echo("=" * 40)
     typer.echo(f"  Felirat:  {subtitle}")
     typer.echo(f"  Videó:    {video_path or '(nincs)'}")
+    if batch_id:
+        typer.echo(f"  Köteg:    {batch_id}")
     typer.echo(f"  Kimenet:  {output_dir}")
     typer.echo("")
 
@@ -638,6 +650,19 @@ def process(
         typer.echo(f"  Obsidian jegyzet: {result_paths['notes']}")
     elif "chapters" in result_paths:
         typer.echo(f"  Fejezetek:        {result_paths['chapters']}")
+
+    if output_config.archive_inputs:
+        try:
+            archive_dir = archive_input_files(
+                subtitle,
+                video_path,
+                Path(output_config.processed_directory),
+                batch_id,
+            )
+            typer.echo(f"  Archiválva:       {archive_dir}")
+        except RuntimeError as exc:
+            typer.echo(f"  Archiválás hiba:  {exc}", err=True)
+            raise typer.Exit(code=1) from exc
 
 
 if __name__ == "__main__":

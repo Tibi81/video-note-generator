@@ -56,16 +56,39 @@ video-notes summarize output/chapters.json --provider openai
 ### Teljes pipeline egy lépésben
 
 ```bash
-# Alapértelmezett: input/ mappa → output/ mappa
+# Alapértelmezett: input/ → output/001/, majd archiválás processed/001/-be
 video-notes process
 
-# Konkrét fájlok
+# Konkrét felirat megadása
 video-notes process input/webinar.srt
-video-notes process input/ --provider gemini --output output/03-webinar/
+
+# Saját kimeneti mappa (--output felülírja az automatikus számozást)
+video-notes process input/ --output output/egyedi-mappa/
 
 # API nélkül (csak parse + clean + chapters)
 video-notes process input/ --skip-summarize
 ```
+
+### Automatikus számozás és archiválás
+
+A `process` parancs alapértelmezés szerint:
+
+1. **Számozott kimenet** — `output/001/`, `output/002/`, … (jegyzet, JSON, képek)
+2. **Forrás archiválás** — sikeres feldolgozás után a videó + SRT átkerül `processed/001/`-be
+
+Az `input/` mappa így mindig üresen várja a következő videót; a korábbi anyagok nem keverednek.
+
+```yaml
+output:
+  directory: "output"
+  processed_directory: "processed"
+  auto_number: true      # output/001/, output/002/, ...
+  archive_inputs: true   # processed/001/-be mozgatás siker után
+  number_padding: 3      # 001, 002, ...
+```
+
+A számláló az `output/` és `processed/` mappák meglévő számozott almappáiból számol tovább.
+Ha `--output` opciót adsz meg, a számozás kikapcsol — az archiválás ilyenkor `processed/<fájlnév>/` alá kerül.
 
 ### Lépésenként
 
